@@ -164,6 +164,7 @@ def create_kde_overlay(results, k, func_type, noise_type, colors):
     
     axes[0].set_xlabel(r"$Y_{baseline}^{(\alpha)}$")
     axes[0].set_ylabel("Density")
+    axes[0].set_title(f"Baseline Scaling: $\\alpha^{{1/2}}$")
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
     axes[0].set_xlim(-10, 10)
@@ -175,6 +176,7 @@ def create_kde_overlay(results, k, func_type, noise_type, colors):
     
     axes[1].set_xlabel(r"$Y_\ell^{(\alpha)}$")
     axes[1].set_ylabel("Density")
+    axes[1].set_title(f"Scaling: $\\alpha^{{1/(2\\ell)}}$ ($\\ell$ = {k})")
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
     axes[1].set_xlim(-4, 4)
@@ -231,6 +233,7 @@ def create_combined_by_noise(all_results, noise_type, function_types, k_values, 
                 sns.kdeplot(Y_data, label=f"$\\alpha$={alpha}", color=color, linewidth=2, 
                             bw_adjust=kde_bw_adjust, ax=ax)
             
+            ax.set_title(f"{func_type.capitalize()}, $\\ell$={k}", fontsize=12)
             ax.set_xlabel(r"$Y_\ell^{(\alpha)}$", fontsize=10)
             ax.set_ylabel("Density", fontsize=10)
             ax.tick_params(labelsize=9)
