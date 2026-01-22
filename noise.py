@@ -46,6 +46,20 @@ class Noise:
         """
         df = -2 * self.variance / (1 - self.variance)
         return  np.random.standard_t(df, self.n)
+
+    def signed_pareto(self):
+        """
+        Signed Pareto distribution: Y = B * X, where B is a Rachemetor  random variable and X is a Pareto random variable
+        Var(Y) = alpha * x_m^2 / (alpha - 2)  
+        alpha = 12
+        Var(Y) = 12 *  x_m^2 /10
+        x_m = (Var(Y) / 1.2)^(1/2)
+        """
+        m = np.sqrt(self.variance / 1.2)
+
+        pareto_samples = m * (np.random.pareto(12, self.n) + 1)
+        signs = np.random.choice([-1, 1], self.n)
+        return pareto_samples * signs
     
 
 

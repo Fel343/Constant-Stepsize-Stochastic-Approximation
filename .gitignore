@@ -1,0 +1,21 @@
+# Figures and results
+figures/
+**/figures/
+**/results/pdf/
+**/results/png/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+

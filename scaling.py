@@ -12,15 +12,16 @@ warnings.filterwarnings("ignore", message="use_inf_as_na option is deprecated")
 
 # Parameters
 alpha_values = [.1, .05, .01]  # You can modify this list for different α values
-num_steps = 3000
-num_runs = 10000  # More samples for higher resolution
-num_bins = 100
-k_values = [2, 3, 4, 5]
+num_steps = 1000
+num_runs = 100000  # More samples for higher resolution
+num_bins = 500
+k_values = [2,3,4]
 noise_variance = 2.0  # Variance for noise distribution
+kde_bw_adjust = 2.2  # Bandwidth adjustment for KDE smoothness (higher = smoother)
 
 # Function and noise types to iterate over
-function_types = ['polynomial', 'trigonometric']
-noise_types = ['normal', 'uniform']
+function_types = ['polynomial','trigonometric']
+noise_types = ['normal', 'signed_pareto']
 
 # Create output directories for results
 output_dir = 'results'
@@ -37,6 +38,15 @@ def g(alpha, k):
 
 def g_baseline(alpha):
     return alpha**(1/2)
+
+
+def format_noise_name(noise_type):
+    """Format noise type for display in plots"""
+    noise_display = {
+        'normal': 'Gaussian',
+        'signed_pareto': 'Signed Pareto',
+    }
+    return noise_display.get(noise_type, noise_type.replace('_', ' ').title())
 
 
 def get_function(func_obj, func_type):
@@ -59,6 +69,8 @@ def get_noise(noise_obj, noise_type):
         return noise_obj.laplace
     elif noise_type == 'student_t':
         return noise_obj.student_t
+    elif noise_type == 'signed_pareto':
+        return noise_obj.signed_pareto
     else:
         raise ValueError(f"Unknown noise type: {noise_type}")
 
@@ -89,14 +101,26 @@ def simulate_Y_alpha(alpha, k, func_type, noise_type, num_runs, num_steps, noise
     noise_method = get_noise(noise_obj, noise_type)
     
     X = np.zeros(num_runs)
+    divergence_threshold = 100  # Threshold to detect diverged runs
         
     for step in range(num_steps):
-
         X = X + alpha * (-func(X) + noise_method())
 
     Y = X / g(alpha, k)
     Y_baseline = X / g_baseline(alpha)
-    return alpha, Y, Y_baseline
+    
+    # Filter out diverged runs (Option 5)
+    valid_mask = (np.abs(Y) < divergence_threshold) & (np.abs(Y_baseline) < divergence_threshold) & np.isfinite(Y) & np.isfinite(Y_baseline)
+    num_valid = np.sum(valid_mask)
+    num_diverged = num_runs - num_valid
+    
+    if num_diverged > 0:
+        print(f"    Filtered {num_diverged}/{num_runs} diverged runs ({100*num_diverged/num_runs:.1f}%)")
+    
+    Y_filtered = Y[valid_mask]
+    Y_baseline_filtered = Y_baseline[valid_mask]
+    
+    return alpha, Y_filtered, Y_baseline_filtered
 
 
 def run_simulation(k, func_type, noise_type, alpha_values, num_runs, num_steps, noise_variance):
@@ -109,73 +133,51 @@ def run_simulation(k, func_type, noise_type, alpha_values, num_runs, num_steps, 
         results.append((alpha_val, Y, Y_baseline))
     return results
 
-
-def save_results(k, func_type, noise_type, results, num_runs, num_steps, output_dir):
-    """Save simulation results to file"""
-    data_dict = {}
-    for alpha, Y_data, Y_baseline in results:
-        data_dict[f'alpha_{alpha}_Y'] = Y_data
-        data_dict[f'alpha_{alpha}_Y_baseline'] = Y_baseline
+# def create_individual_histogram(alpha, Y_data, k, func_type, noise_type, color, num_bins):
+#     """Create and save individual histogram for a specific configuration"""
+#     fig, ax = plt.subplots(figsize=(6, 4))
     
-    data_dict['alpha_values'] = np.array([r[0] for r in results])
-    data_dict['num_steps'] = num_steps
-    data_dict['num_runs'] = num_runs
-    data_dict['k'] = k
-    data_dict['function_type'] = func_type
-    data_dict['noise_type'] = noise_type
-    data_dict['total_iterations'] = num_runs * num_steps
+#     sns.histplot(Y_data, bins=num_bins, stat="density", color=color, 
+#                  label=f"$\\alpha$ = {alpha}", ax=ax)
+#     ax.set_title(f"{func_type.capitalize()}, {format_noise_name(noise_type)} Noise\n$\\ell$ = {k}, $\\alpha$ = {alpha}")
+#     ax.set_xlabel(r"$Y_\ell^{(\alpha)}$")
+#     ax.set_ylabel("Density")
+#     ax.legend()
+#     ax.grid(True, alpha=0.3)
     
-    filename = os.path.join(output_dir, f'results_{func_type}_{noise_type}_k{k}.npz')
-    np.savez(filename, **data_dict)
-    print(f"  Data saved to {filename}")
-    return filename
-
-
-def create_individual_histogram(alpha, Y_data, k, func_type, noise_type, color, num_bins):
-    """Create and save individual histogram for a specific configuration"""
-    fig, ax = plt.subplots(figsize=(6, 4))
+#     plt.tight_layout()
     
-    sns.histplot(Y_data, bins=num_bins, stat="density", color=color, 
-                 label=f"$\\alpha$ = {alpha}", ax=ax)
-    ax.set_title(f"{func_type.capitalize()}, {noise_type.capitalize()} Noise\nk = {k}, $\\alpha$ = {alpha}")
-    ax.set_xlabel(r"$Y_k^{(\alpha)}$")
-    ax.set_ylabel("Density")
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    
-    filename = f'hist_{func_type}_{noise_type}_k{k}_alpha{alpha}'
-    fig.savefig(os.path.join(pdf_dir, f'{filename}.pdf'), dpi=300, bbox_inches='tight')
-    fig.savefig(os.path.join(png_dir, f'{filename}.png'), dpi=300, bbox_inches='tight')
-    plt.close(fig)
+#     filename = f'hist_{func_type}_{noise_type}_k{k}_alpha{alpha}'
+#     fig.savefig(os.path.join(pdf_dir, f'{filename}.pdf'), dpi=300, bbox_inches='tight')
+#     fig.savefig(os.path.join(png_dir, f'{filename}.png'), dpi=300, bbox_inches='tight')
+#     plt.close(fig)
 
 
 def create_kde_overlay(results, k, func_type, noise_type, colors):
     """Create and save KDE overlay plot for all alpha values, comparing k-scaling vs baseline"""
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     
-    # Left plot: k-dependent scaling (α^(1/2k))
-    for (alpha, Y_data, _), color in zip(results, colors):
-        sns.kdeplot(Y_data, label=f"$\\alpha$ = {alpha}", color=color, linewidth=2, ax=axes[0])
+    # Left plot: baseline scaling (α^(1/2))
+    for (alpha, _, Y_baseline), color in zip(results, colors):
+        sns.kdeplot(Y_baseline, label=f"$\\alpha$ = {alpha}", color=color, linewidth=2, 
+                    bw_adjust=kde_bw_adjust, ax=axes[0])
     
-    axes[0].set_xlabel(r"$Y_k^{(\alpha)}$")
+    axes[0].set_xlabel(r"$Y_{baseline}^{(\alpha)}$")
     axes[0].set_ylabel("Density")
-    axes[0].set_title(f"Scaling: $\\alpha^{{1/(2k)}}$ (k = {k})")
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
+    axes[0].set_xlim(-10, 10)
     
-    # Right plot: baseline scaling (α^(1/2))
-    for (alpha, _, Y_baseline), color in zip(results, colors):
-        sns.kdeplot(Y_baseline, label=f"$\\alpha$ = {alpha}", color=color, linewidth=2, ax=axes[1])
+    # Right plot: k-dependent scaling (α^(1/2k))
+    for (alpha, Y_data, _), color in zip(results, colors):
+        sns.kdeplot(Y_data, label=f"$\\alpha$ = {alpha}", color=color, linewidth=2, 
+                    bw_adjust=kde_bw_adjust, ax=axes[1])
     
-    axes[1].set_xlabel(r"$Y_{baseline}^{(\alpha)}$")
+    axes[1].set_xlabel(r"$Y_\ell^{(\alpha)}$")
     axes[1].set_ylabel("Density")
-    axes[1].set_title(f"Baseline Scaling: $\\alpha^{{1/2}}$")
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
-    
-    fig.suptitle(f"{func_type.capitalize()}, {noise_type.capitalize()} Noise, k = {k}", fontsize=14)
+    axes[1].set_xlim(-4, 4)
     plt.tight_layout()
     
     filename = f'kde_{func_type}_{noise_type}_k{k}'
@@ -193,8 +195,7 @@ def create_combined_plot(results, k, func_type, noise_type, colors, num_bins):
     for ax, (alpha, Y_data, _), color in zip(axes[:num_alphas], results, colors):
         sns.histplot(Y_data, bins=num_bins, stat="density", color=color, 
                      label=f"$\\alpha$ = {alpha}", ax=ax)
-        ax.set_title(f"$\\alpha$ = {alpha}")
-        ax.set_xlabel(r"$Y_k^{(\alpha)}$")
+        ax.set_xlabel(r"$Y_\ell^{(\alpha)}$")
         ax.set_ylabel("Density")
         ax.legend()
         ax.grid(True, alpha=0.3)
@@ -205,11 +206,8 @@ def create_combined_plot(results, k, func_type, noise_type, colors, num_bins):
     
     axes[-1].set_xlabel(r"$Y_k^{(\alpha)}$")
     axes[-1].set_ylabel("Density")
-    axes[-1].set_title("All $\\alpha$ Overlaid")
     axes[-1].legend()
     axes[-1].grid(True, alpha=0.3)
-    
-    fig.suptitle(f"Scaled SGD: {func_type.capitalize()}, {noise_type.capitalize()} Noise, k = {k}", fontsize=14)
     plt.tight_layout()
     
     filename = f'combined_{func_type}_{noise_type}_k{k}'
@@ -218,91 +216,37 @@ def create_combined_plot(results, k, func_type, noise_type, colors, num_bins):
     plt.close(fig)
 
 
-# def create_comparison_by_noise(all_results, func_type, k, noise_types, colors, num_bins, output_dir):
-#     """Create a comparison plot across different noise types for a fixed function and k"""
-#     fig, axes = plt.subplots(1, len(noise_types), figsize=(5 * len(noise_types), 4))
-    
-#     noise_colors = ['#e63946', '#457b9d', '#2a9d8f', '#f4a261']
-    
-#     for ax, noise_type, nc in zip(axes, noise_types, noise_colors):
-#         results = all_results[(func_type, noise_type, k)]
-#         # Plot KDE for each alpha
-#         for (alpha, Y_data, _), color in zip(results, colors):
-#             sns.kdeplot(Y_data, label=f"$\\alpha$={alpha}", color=color, linewidth=2, ax=ax)
-#         ax.set_title(f"{noise_type.capitalize()} Noise")
-#         ax.set_xlabel(r"$Y_k^{(\alpha)}$")
-#         ax.set_ylabel("Density")
-#         ax.legend()
-#         ax.grid(True, alpha=0.3)
-    
-#     fig.suptitle(f"{func_type.capitalize()} Function, k = {k}: Noise Comparison", fontsize=14)
-#     plt.tight_layout()
-    
-#     filename_base = os.path.join(output_dir, f'comparison_noise_{func_type}_k{k}')
-#     fig.savefig(f'{filename_base}.pdf', dpi=300, bbox_inches='tight')
-#     fig.savefig(f'{filename_base}.png', dpi=300, bbox_inches='tight')
-#     plt.close(fig)
 
-
-# def create_comparison_by_function(all_results, noise_type, k, function_types, colors, num_bins, output_dir):
-#     """Create a comparison plot across different function types for a fixed noise and k"""
-#     fig, axes = plt.subplots(1, len(function_types), figsize=(5 * len(function_types), 4))
+def create_combined_by_noise(all_results, noise_type, function_types, k_values, colors):
+    """Create a 3x2 combined plot: rows = k values, columns = function types, for a specific noise type"""
+    fig, axes = plt.subplots(len(k_values), len(function_types), 
+                              figsize=(6 * len(function_types), 4 * len(k_values)))
     
-#     if len(function_types) == 1:
-#         axes = [axes]
+    for row_idx, k in enumerate(k_values):
+        for col_idx, func_type in enumerate(function_types):
+            ax = axes[row_idx, col_idx] if len(k_values) > 1 else axes[col_idx]
+            results = all_results[(func_type, noise_type, k)]
+            
+            for (alpha, Y_data, _), color in zip(results, colors):
+                sns.kdeplot(Y_data, label=f"$\\alpha$={alpha}", color=color, linewidth=2, 
+                            bw_adjust=kde_bw_adjust, ax=ax)
+            
+            ax.set_xlabel(r"$Y_\ell^{(\alpha)}$", fontsize=10)
+            ax.set_ylabel("Density", fontsize=10)
+            ax.tick_params(labelsize=9)
+            ax.grid(True, alpha=0.3)
+            ax.set_xlim(-3, 3)
+            
+            # Only show legend in first subplot
+            if row_idx == 0 and col_idx == 0:
+                ax.legend(fontsize=9)
+    plt.tight_layout()
     
-#     for ax, func_type in zip(axes, function_types):
-#         results = all_results[(func_type, noise_type, k)]
-#         # Plot KDE for each alpha
-#         for (alpha, Y_data, _), color in zip(results, colors):
-#             sns.kdeplot(Y_data, label=f"$\\alpha$={alpha}", color=color, linewidth=2, ax=ax)
-#         ax.set_title(f"{func_type.capitalize()}")
-#         ax.set_xlabel(r"$Y_k^{(\alpha)}$")
-#         ax.set_ylabel("Density")
-#         ax.legend()
-#         ax.grid(True, alpha=0.3)
-    
-#     fig.suptitle(f"{noise_type.capitalize()} Noise, k = {k}: Function Comparison", fontsize=14)
-#     plt.tight_layout()
-    
-#     filename_base = os.path.join(output_dir, f'comparison_func_{noise_type}_k{k}')
-#     fig.savefig(f'{filename_base}.pdf', dpi=300, bbox_inches='tight')
-#     fig.savefig(f'{filename_base}.png', dpi=300, bbox_inches='tight')
-#     plt.close(fig)
-
-
-# def create_grand_summary(all_results, function_types, noise_types, k_values, colors, output_dir):
-#     """Create a grand summary plot for each function type: k values vs noise types"""
-#     for func_type in function_types:
-#         fig, axes = plt.subplots(len(k_values), len(noise_types), 
-#                                   figsize=(4 * len(noise_types), 3 * len(k_values)))
-        
-#         for row_idx, k in enumerate(k_values):
-#             for col_idx, noise_type in enumerate(noise_types):
-#                 ax = axes[row_idx, col_idx] if len(k_values) > 1 else axes[col_idx]
-#                 results = all_results[(func_type, noise_type, k)]
-                
-#                 for (alpha, Y_data, _), color in zip(results, colors):
-#                     sns.kdeplot(Y_data, label=f"$\\alpha$={alpha}", color=color, linewidth=1.5, ax=ax)
-                
-#                 ax.set_title(f"k={k}, {noise_type}", fontsize=10)
-#                 ax.set_xlabel(r"$Y_k^{(\alpha)}$", fontsize=8)
-#                 ax.set_ylabel("Density", fontsize=8)
-#                 ax.tick_params(labelsize=7)
-#                 ax.grid(True, alpha=0.3)
-                
-#                 # Only show legend in first subplot
-#                 if row_idx == 0 and col_idx == 0:
-#                     ax.legend(fontsize=7)
-        
-#         fig.suptitle(f"Grand Summary: {func_type.capitalize()} Function", fontsize=16)
-#         plt.tight_layout()
-        
-#         filename_base = os.path.join(output_dir, f'grand_summary_{func_type}')
-#         fig.savefig(f'{filename_base}.pdf', dpi=300, bbox_inches='tight')
-#         fig.savefig(f'{filename_base}.png', dpi=300, bbox_inches='tight')
-#         plt.close(fig)
-#         print(f"Saved {filename_base}.pdf and .png")
+    filename = f'combined_grid_{noise_type}'
+    fig.savefig(os.path.join(pdf_dir, f'{filename}.pdf'), dpi=300, bbox_inches='tight')
+    fig.savefig(os.path.join(png_dir, f'{filename}.png'), dpi=300, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Saved {filename}.pdf and .png")
 
 
 if __name__ == '__main__':
@@ -324,8 +268,7 @@ if __name__ == '__main__':
     print(f"  k values: {k_values}")
     print(f"  Alpha values: {alpha_values}")
     print(f"  Num runs: {num_runs:,}")
-    print(f"  Num steps: {num_steps:,}")
-    print(f"  Total iterations per simulation: {num_runs * num_steps:,}")
+    print(f"  Base num steps: {num_steps:,} (scaled by ell)")
     print(f"  Total simulations to run: {total_sims}")
     print("-" * 60)
     
@@ -334,50 +277,23 @@ if __name__ == '__main__':
         for noise_type in noise_types:
             for k in k_values:
                 current_sim += 1
-                print(f"\n[{current_sim}/{total_sims}] Running: {func_type}, {noise_type} noise, k={k}...")
+                print(f"\n[{current_sim}/{total_sims}] Running: {func_type}, {noise_type} noise, $\\ell$={k}, steps={num_steps * k}...")
                 
-                # Run simulation
+                # Run simulation with num_steps * ell
                 results = run_simulation(
                     k, func_type, noise_type, alpha_values, 
-                    num_runs, num_steps, noise_variance
+                    num_runs, num_steps * k, noise_variance
                 )
                 all_results[(func_type, noise_type, k)] = results
-                
-                # Save results to file
-                save_results(k, func_type, noise_type, results, num_runs, num_steps, output_dir)
-                
-                # # Create individual histogram plots for each alpha
-                # for (alpha, Y_data, _), color in zip(results, colors):
-                #     create_individual_histogram(
-                #         alpha, Y_data, k, func_type, noise_type, 
-                #         color, num_bins
-                #     )
-                
+
                 # Create KDE overlay plot
                 create_kde_overlay(results, k, func_type, noise_type, colors)
-                
-                # # Create combined plot
-                # create_combined_plot(results, k, func_type, noise_type, colors, num_bins)
     
-    # # Create comparison plots
-    # print("\n" + "-" * 60)
-    # print("Creating comparison plots...")
-    
-    # # Comparison by noise type (for each function and k)
-    # for func_type in function_types:
-    #     for k in k_values:
-    #         create_comparison_by_noise(all_results, func_type, k, noise_types, colors, num_bins, output_dir)
-    #         print(f"  Saved noise comparison: {func_type}, k={k}")
-    
-    # # Comparison by function type (for each noise and k)
-    # for noise_type in noise_types:
-    #     for k in k_values:
-    #         create_comparison_by_function(all_results, noise_type, k, function_types, colors, num_bins, output_dir)
-    #         print(f"  Saved function comparison: {noise_type}, k={k}")
-    
-    # # Grand summary plots
-    # print("\nCreating grand summary plots...")
-    # create_grand_summary(all_results, function_types, noise_types, k_values, colors, output_dir)
+    # Create combined 3x2 grid for each noise type
+    print("\n" + "-" * 60)
+    print("Creating combined grid plots...")
+    for noise_type in noise_types:
+        create_combined_by_noise(all_results, noise_type, function_types, k_values, colors)
     
     print("\n" + "=" * 60)
     print("ALL SIMULATIONS COMPLETE!")
