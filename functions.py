@@ -1,4 +1,4 @@
- # Scaling function for general convex objective function 
+ # Scaling function for polynomial and trigonometric functions
 
 import numpy as np
 

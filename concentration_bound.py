@@ -30,7 +30,7 @@ def simulate_Y_alpha(alpha, num_steps, num_runs):
         Ys.append(Y)
     return np.array(Ys)
 
-# (Calpha^1/2)^1/2)/a
+# Bound calcuated by Concentration Bound: (Calpha^1/2)^1/2)/a
 def bound(C, alpha, x):
     return ((C* alpha**(1/2)) **(1/2)) / x
 

@@ -4,7 +4,7 @@ This repository contains the code to reproduce the numerical experiments in our 
 
 ## Overview
 
-We study the stationary distribution of constant-stepsize stochastic approximation (SA) algorithms. Our analysis reveals that for objective functions with polynomial growth of order $2\ell$, the scaled iterate $X_n / \alpha^{1/(2\ell)}$ converges to a non-degenerate stationary distribution as $\alpha \to 0$.
+We study the stationary distribution of constant-stepsize stochastic approximation (SA) algorithms. Our analysis reveals that for objective functions with polynomial growth of order $2\ell$, the scaled iterate $X_n / \alpha^{1/(2\ell)}$ converges to a stationary distribution as $\alpha \to 0$.
 
 ## Repository Structure
 
@@ -82,7 +82,7 @@ python concentration_bound.py
 
 - **Gaussian:** $\mathcal{N}(0, \sigma^2)$
 - **Signed Pareto:** Heavy-tailed distribution with finite variance
-
+<!-- 
 ## Citation
 
 If you find this code useful, please cite our paper:
@@ -94,7 +94,7 @@ If you find this code useful, please cite our paper:
   booktitle={International Conference on Machine Learning},
   year={2026}
 }
-```
+``` -->
 
 ## License
 

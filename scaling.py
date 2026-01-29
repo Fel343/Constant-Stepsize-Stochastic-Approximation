@@ -16,7 +16,7 @@ num_steps = 1000
 num_runs = 100000  # More samples for higher resolution
 num_bins = 500
 k_values = [2,3,4]
-noise_variance = 2.0  # Variance for noise distribution
+noise_variance = 1.0  # Variance for noise distribution
 kde_bw_adjust = 2.2  # Bandwidth adjustment for KDE smoothness (higher = smoother)
 
 # Function and noise types to iterate over
@@ -109,7 +109,7 @@ def simulate_Y_alpha(alpha, k, func_type, noise_type, num_runs, num_steps, noise
     Y = X / g(alpha, k)
     Y_baseline = X / g_baseline(alpha)
     
-    # Filter out diverged runs (Option 5)
+    # Filter out diverged runs
     valid_mask = (np.abs(Y) < divergence_threshold) & (np.abs(Y_baseline) < divergence_threshold) & np.isfinite(Y) & np.isfinite(Y_baseline)
     num_valid = np.sum(valid_mask)
     num_diverged = num_runs - num_valid
